@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.env
+crypto_app.db
+.git/

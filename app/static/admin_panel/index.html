@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crypto Insights — Admin Panel</title>
+<style>
+  :root {
+    --bg: #0b0e14; --surface: #141824; --surface-elevated: #1c2130;
+    --border: #262c3d; --text: #f5f6fa; --text-secondary: #9aa3b5;
+    --text-muted: #6b7285; --brand-start: #7c5cfc; --brand-end: #39d2c0;
+    --negative: #ff5c6c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 32px 16px 80px; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 800; margin: 0 0 4px;
+    background: linear-gradient(135deg, var(--brand-start), var(--brand-end));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .subtitle { color: var(--text-secondary); font-size: 14px; margin-bottom: 28px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 20px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; color: var(--text-secondary); margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=password], input[type=datetime-local], textarea {
+    width: 100%; background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; color: var(--text); font-size: 14px; font-family: inherit; }
+  input[type=file] { width: 100%; color: var(--text-secondary); font-size: 13px; }
+  textarea { resize: vertical; min-height: 90px; }
+  button { width: 100%; margin-top: 18px; padding: 14px; border: none; border-radius: 14px;
+    background: linear-gradient(135deg, var(--brand-start), var(--brand-end));
+    color: white; font-size: 15px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  button.secondary { background: transparent; border: 1px solid var(--negative); color: var(--negative);
+    font-weight: 600; font-size: 13px; padding: 8px 12px; width: auto; margin-top: 0; }
+  .msg { font-size: 13px; margin-top: 10px; }
+  .msg.error { color: var(--negative); }
+  .msg.success { color: var(--brand-end); }
+  .list-item { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--border);
+    border-radius: 14px; margin-bottom: 10px; align-items: center; }
+  .list-item img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover;
+    background: var(--surface-elevated); }
+  .list-item .info { flex: 1; min-width: 0; }
+  .list-item .info .title { font-weight: 700; font-size: 14px; }
+  .list-item .info .date { font-size: 12px; color: var(--text-muted); }
+  .empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trade of the Day</h1>
+  <div class="subtitle">Admin panel — post and manage what shows in the app's Trade of the Day tab.</div>
+
+  <div class="card">
+    <label>Admin key</label>
+    <input type="password" id="adminKey" placeholder="Enter your admin key" />
+    <label>Title</label>
+    <input type="text" id="title" placeholder="e.g. BTC/USDT — Bullish flag breakout" />
+    <label>Description</label>
+    <textarea id="description" placeholder="Describe the setup, entry idea, or context..."></textarea>
+    <label>Posted date & time</label>
+    <input type="datetime-local" id="tradeDatetime" />
+    <label>Chart image</label>
+    <input type="file" id="imageFile" accept="image/png, image/jpeg, image/webp" />
+    <button id="submitBtn" onclick="submitTrade()">Post Trade of the Day</button>
+    <div id="formMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <div class="subtitle" style="margin-bottom:14px;">Recent posts</div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = window.location.origin;
+  function getAdminKey() { return document.getElementById('adminKey').value.trim(); }
+  function setDefaultDatetime() {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('tradeDatetime').value = now.toISOString().slice(0, 16);
+  }
+  async function loadList() {
+    const listEl = document.getElementById('list');
+    try {
+      const res = await fetch(`${API_BASE}/trade-of-day?limit=20`);
+      const data = await res.json();
+      if (!data.length) { listEl.innerHTML = '<div class="empty">No entries yet.</div>'; return; }
+      listEl.innerHTML = data.map(item => `
+        <div class="list-item">
+          <img src="${API_BASE}${item.image_url}" onerror="this.style.visibility='hidden'" />
+          <div class="info">
+            <div class="title">${escapeHtml(item.title)}</div>
+            <div class="date">${new Date(item.trade_datetime).toLocaleString()}</div>
+          </div>
+          <button class="secondary" onclick="deleteTrade(${item.id})">Delete</button>
+        </div>`).join('');
+    } catch (e) { listEl.innerHTML = '<div class="empty">Could not load entries.</div>'; }
+  }
+  function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+  async function submitTrade() {
+    const adminKey = getAdminKey();
+    const title = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const tradeDatetime = document.getElementById('tradeDatetime').value;
+    const fileInput = document.getElementById('imageFile');
+    const msgEl = document.getElementById('formMsg');
+    const btn = document.getElementById('submitBtn');
+    msgEl.textContent = ''; msgEl.className = 'msg';
+    if (!adminKey || !title || !description || !tradeDatetime || !fileInput.files[0]) {
+      msgEl.textContent = 'Please fill in every field and choose an image.';
+      msgEl.className = 'msg error'; return;
+    }
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('description', description);
+    formData.append('trade_datetime', tradeDatetime);
+    formData.append('file', fileInput.files[0]);
+    btn.disabled = true; btn.textContent = 'Posting...';
+    try {
+      const res = await fetch(`${API_BASE}/trade-of-day`, {
+        method: 'POST', headers: { 'X-Admin-Key': adminKey }, body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Request failed (${res.status})`);
+      }
+      msgEl.textContent = 'Posted successfully.'; msgEl.className = 'msg success';
+      document.getElementById('title').value = '';
+      document.getElementById('description').value = '';
+      fileInput.value = '';
+      setDefaultDatetime();
+      loadList();
+    } catch (e) {
+      msgEl.textContent = e.message || 'Something went wrong.'; msgEl.className = 'msg error';
+    } finally { btn.disabled = false; btn.textContent = 'Post Trade of the Day'; }
+  }
+  async function deleteTrade(id) {
+    const adminKey = getAdminKey();
+    if (!adminKey) { alert('Enter your admin key first.'); return; }
+    if (!confirm('Delete this entry?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/trade-of-day/${id}`, {
+        method: 'DELETE', headers: { 'X-Admin-Key': adminKey },
+      });
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Request failed (${res.status})`);
+      }
+      loadList();
+    } catch (e) { alert(e.message || 'Could not delete entry.'); }
+  }
+  setDefaultDatetime();
+  loadList();
+</script>
+</body>
+</html>
